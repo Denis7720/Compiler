@@ -1,6 +1,7 @@
 a = input()
 b = 6
-c = a + b
-#Комментарий
+c = "pika"
+# # Комментарий
 print("Hello")
-print(c)
+print(cap)
+cap = a + b
