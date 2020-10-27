@@ -2,6 +2,7 @@
 
 import sys
 import argparse
+import os
 
 NUM, ID, INPUT, PRINT, LBRA, RBRA, LPAR, RPAR, PLUS, MINUS, LESS, \
 EQUAL, SEMICOLON, MIN, MAX, WHILE, AND, IF, ELSE, STRING_LITERAL, \
@@ -346,10 +347,20 @@ def parser(tokens_arr, display: bool):
                 current += 1
 
             elif "number" in token.keys():
-                current += 1
+                if "operation" in next_token.keys():
+                    current += 2
 
-                return {'type': 'Number',
-                        'value': token.get("number")}
+                    return {'type': 'Operation',
+                            'value': next_token.get("operation"),
+                            'params': [{'type': 'Number',
+                                        'value': token.get("number")},
+                                       LL1_walk()]
+                            }
+                else:
+                    current += 1
+
+                    return {'type': 'Number',
+                            'value': token.get("number")}
 
             elif "string_literal" in token.keys():
                 current += 1
@@ -727,6 +738,197 @@ def visitor(ast):
     passage(ast_type, parent)
 
 
+intro = ".intel_syntax noprefix\n.global main\n.LC0:\n.string \"%d\\n\"\nmain:\npush rbp\n" \
+        "mov rbp, rsp\n"
+displace = 4
+asm_container = ""
+def assembler(ast):
+    parent = ast
+    ast_type = parent['type']
+
+    def asm_passage(childs):
+        global asm_container
+        global displace
+        global intro
+
+        for node in childs:
+            if node['type'] == "Operation":
+                operation_value = node.get('value')
+                parameters = node.get('params')
+
+                if operation_value == "=":
+                    if len(parameters) == 2:
+                        left_parameter = parameters[0]
+                        right_parameter = parameters[1]
+
+                        if left_parameter['type'] == "Operand":
+                            for temp in childs:
+                                if temp['type'] == "Operation" and temp['value'] == "=":
+                                    if temp['params'][0]['type'] == "Operand" and temp['params'][0]['value'] == left_parameter['value']:
+                                        if "displace" in temp['params'][0]:
+                                            print("I'm here")
+                                            break
+                                        else:
+                                            print("i'm here 3")
+                                            if right_parameter['type'] != "Operation":
+                                                asm_container += f"mov DWORD PTR [rbp-{displace}], "
+                                            left_parameter["displace"] = displace
+                                            displace += 4
+                                            break
+                        print(node)
+                        if right_parameter['type'] == "Number":
+                            asm_container += f"{right_parameter['value']}" + "\n"
+                        elif right_parameter['type'] == "Operand":
+                            for temp in childs:
+                                if temp['type'] == "Operation" and temp['value'] == "=":
+                                    if temp['params'][0]['type'] == "Operand" and temp['params'][0]['value'] == right_parameter['value']:
+                                        print(temp['params'][0]['value'])
+                                        asm_container += f"mov edx, DWORD PTR [rbp-{temp['params'][0]['displace']}]\n"
+                                        break
+
+                            for temp in childs:
+                                if temp['type'] == "Operation" and temp['value'] == "=":
+                                    if temp['params'][0]['type'] == "Operand" and temp['params'][0]['value'] == left_parameter['value']:
+                                        asm_container += f"mov DWORD PTR [rbp-{temp['params'][0]['displace']}], edx\n"
+                                        break
+                        elif right_parameter['type'] == "Operation":
+                            if right_parameter['value'] == "+":
+                                left = right_parameter['params'][0]
+                                right = right_parameter['params'][1]
+
+                                if left['type'] == "Operand":
+                                    for temp in childs:
+                                        if temp['type'] == "Operation" and temp['value'] == "=":
+                                            if temp['params'][0]['type'] == "Operand" and temp['params'][0]['value'] == left['value']:
+                                                asm_container += f"mov edx, DWORD PTR [rbp-{temp['params'][0]['displace']}]\n"
+                                                break
+                                elif left['type'] == "Number":
+                                    asm_container += f"mov edx, {left['value']}\n"
+
+                                if right['type'] == "Operand":
+                                    for temp in childs:
+                                        if temp['type'] == "Operation" and temp['value'] == "=":
+                                            if temp['params'][0]['type'] == "Operand" and temp['params'][0]['value'] == right['value']:
+                                                asm_container += f"add edx, DWORD PTR [rbp-{temp['params'][0]['displace']}]\nmov DWORD PTR [rbp-{left_parameter['displace']}], edx\n"
+                                                break
+                                elif right['type'] == "Number":
+                                    asm_container += f"add edx, {right['value']}\nmov DWORD PTR [rbp-{left_parameter['displace']}], edx\n"
+                            elif right_parameter['value'] == "-":
+                                left = right_parameter['params'][0]
+                                right = right_parameter['params'][1]
+
+                                if left['type'] == "Operand":
+                                    for temp in childs:
+                                        if temp['type'] == "Operation" and temp['value'] == "=":
+                                            if temp['params'][0]['type'] == "Operand" and temp['params'][0]['value'] == \
+                                                    left['value']:
+                                                asm_container += f"mov edx, DWORD PTR [rbp-{temp['params'][0]['displace']}]\n"
+                                                break
+                                elif left['type'] == "Number":
+                                    asm_container += f"mov edx, {left['value']}\n"
+
+                                if right['type'] == "Operand":
+                                    for temp in childs:
+                                        if temp['type'] == "Operation" and temp['value'] == "=":
+                                            if temp['params'][0]['type'] == "Operand" and temp['params'][0]['value'] == \
+                                                    right['value']:
+                                                asm_container += f"sub edx, DWORD PTR [rbp-{temp['params'][0]['displace']}]\nmov DWORD PTR [rbp-{left_parameter['displace']}], edx\n"
+                                                break
+                                elif right['type'] == "Number":
+                                    asm_container += f"sub edx, {right['value']}\nmov DWORD PTR [rbp-{left_parameter['displace']}], edx\n"
+                            elif right_parameter['value'] == "*":
+                                left = right_parameter['params'][0]
+                                right = right_parameter['params'][1]
+
+                                if left['type'] == "Operand":
+                                    for temp in childs:
+                                        if temp['type'] == "Operation" and temp['value'] == "=":
+                                            if temp['params'][0]['type'] == "Operand" and temp['params'][0]['value'] == \
+                                                    left['value']:
+                                                asm_container += f"mov edx, DWORD PTR [rbp-{temp['params'][0]['displace']}]\n"
+                                                break
+                                elif left['type'] == "Number":
+                                    asm_container += f"mov edx, {left['value']}\n"
+
+                                if right['type'] == "Operand":
+                                    for temp in childs:
+                                        if temp['type'] == "Operation" and temp['value'] == "=":
+                                            if temp['params'][0]['type'] == "Operand" and temp['params'][0]['value'] == \
+                                                    right['value']:
+                                                asm_container += f"imul edx, DWORD PTR [rbp-{temp['params'][0]['displace']}]\nmov DWORD PTR [rbp-{left_parameter['displace']}], edx\n"
+                                                break
+                                elif right['type'] == "Number":
+                                    asm_container += f"imul edx, {right['value']}\nmov DWORD PTR [rbp-{left_parameter['displace']}], edx\n"
+                            elif right_parameter['value'] == "/":
+                                left = right_parameter['params'][0]
+                                right = right_parameter['params'][1]
+
+                                if left['type'] == "Operand":
+                                    for temp in childs:
+                                        if temp['type'] == "Operation" and temp['value'] == "=":
+                                            if temp['params'][0]['type'] == "Operand" and temp['params'][0]['value'] == \
+                                                    left['value']:
+                                                asm_container += f"mov eax, DWORD PTR [rbp-{temp['params'][0]['displace']}]\ncdq\n"
+                                                break
+                                elif left['type'] == "Number":
+                                    asm_container += f"mov eax, {left['value']}\ncdq\n"
+
+                                if right['type'] == "Operand":
+                                    for temp in childs:
+                                        if temp['type'] == "Operation" and temp['value'] == "=":
+                                            if temp['params'][0]['type'] == "Operand" and temp['params'][0]['value'] == \
+                                                    right['value']:
+                                                asm_container += f"mov ebx, DWORD PTR [rbp-{temp['params'][0]['displace']}]\nidiv ebx\nmov DWORD PTR [rbp-{left_parameter['displace']}], eax\n"
+                                                break
+                                elif right['type'] == "Number":
+                                    asm_container += f"mov ebx, {right['value']}\nidiv ebx\nmov DWORD PTR [rbp-{left_parameter['displace']}], eax\n"
+                            elif right_parameter['value'] == "%":
+                                left = right_parameter['params'][0]
+                                right = right_parameter['params'][1]
+
+                                if left['type'] == "Operand":
+                                    for temp in childs:
+                                        if temp['type'] == "Operation" and temp['value'] == "=":
+                                            if temp['params'][0]['type'] == "Operand" and temp['params'][0]['value'] == \
+                                                    left['value']:
+                                                asm_container += f"mov eax, DWORD PTR [rbp-{temp['params'][0]['displace']}]\ncdq\n"
+                                                break
+                                elif left['type'] == "Number":
+                                    asm_container += f"mov eax, {left['value']}\ncdq\n"
+
+                                if right['type'] == "Operand":
+                                    for temp in childs:
+                                        if temp['type'] == "Operation" and temp['value'] == "=":
+                                            if temp['params'][0]['type'] == "Operand" and temp['params'][0]['value'] == \
+                                                    right['value']:
+                                                asm_container += f"mov ebx, DWORD PTR [rbp-{temp['params'][0]['displace']}]\nidiv ebx\nmov DWORD PTR [rbp-{left_parameter['displace']}], edx\n"
+                                                break
+                                elif right['type'] == "Number":
+                                    asm_container += f"mov ebx, {right['value']}\nidiv ebx\nmov DWORD PTR [rbp-{left_parameter['displace']}], edx\n"
+
+            elif node['type'] == "Function":
+                operation_value = node.get('value')
+                parameters = node.get('params')
+
+                if operation_value == "print":
+                    for param in parameters:
+                        if param['type'] == "Operand":
+                            for temp in childs:
+                                if temp['type'] == "Operation" and temp['value'] == "=":
+                                    for i in range(2):
+                                        if temp['params'][i]['type'] == "Operand" and temp['params'][i]['value'] == param['value']:
+                                            asm_container += f"mov edx, DWORD PTR [rbp-{temp['params'][i]['displace']}]\nmov esi, edx\nmov edi, OFFSET FLAT:.LC0\nmov edx, 0\ncall printf\nmov edx, 0\n"
+                                            break
+                        elif param['type'] == "StringLiteral":
+                            intro = ".intel_syntax noprefix\n.global main\n.LC0:\n.string \"%d\\n\"\n" + f".OUTPUT:\n.string \"{param['value']}\\n\"\n" + "main:\npush rbp\nmov rbp, rsp\n"
+                            asm_container += f"mov edi, OFFSET FLAT:.OUTPUT\nmov eax, 0\ncall printf\nmov eax, 0\n"
+        print(intro + asm_container + "nop\npop rbp \nret\n")
+
+    if ast_type == "Program":
+        child = parent.get('body')
+        asm_passage(child)
+
+
 # Считывание аргументов из терминала
 def arg_input():
     arg = argparse.ArgumentParser()
@@ -759,6 +961,22 @@ if __name__ == '__main__':
                 Lexer = lexer(line, location, display)
             display = True
             Parser = parser(Lexer, display)
+        finally:
+            file.close()
+    elif option.name == "/dump-asm":
+        file = open(file_name.name, 'r')
+        try:
+            for location, line in enumerate(file, 1):
+                Lexer = lexer(line, location, display)
+            Parser = parser(Lexer, display)
+            assembler(Parser)
+
+            asm_out = intro + asm_container + "nop\npop rbp \nret\n"
+
+            with open("asm_output.s", "w") as file_output:
+                file_output.write(asm_out)
+                file_output.close()
+            os.system(f"gcc -Wall -no-pie asm_output.s -o program")
         finally:
             file.close()
 
