@@ -380,6 +380,8 @@ def parser(tokens_arr, display: bool):
                         temporary_list.append(token["string_literal"])
                 current += 1
 
+                temporary_list = tuple(temporary_list)
+
                 return {'type': 'Array',
                         'value': temporary_list}
 
@@ -976,7 +978,10 @@ if __name__ == '__main__':
             with open("asm_output.s", "w") as file_output:
                 file_output.write(asm_out)
                 file_output.close()
-            os.system(f"gcc -Wall -no-pie asm_output.s -o program")
+            os.system("gcc -Wall -no-pie asm_output.s -o program")
+
+            print("Результат работы: ")
+            os.system("./program")
         finally:
             file.close()
 
